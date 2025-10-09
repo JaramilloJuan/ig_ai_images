@@ -1,0 +1,267 @@
+/**
+ * Module: TYPO3/CMS/IgAiImages/AiImageWizard
+ */
+import Modal from '@typo3/backend/modal.js';
+import Notification from '@typo3/backend/notification.js';
+import AjaxRequest from '@typo3/core/ajax/ajax-request.js';
+import {MessageUtility} from '@typo3/backend/utility/message-utility.js';
+
+class AiImageWizard {
+    constructor() {
+        this.currentModal = null;
+        this.init();
+    }
+
+    init() {
+        // Wait for DOM to be ready and add buttons to all FAL fields
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.addButtonsToFalFields());
+        } else {
+            this.addButtonsToFalFields();
+        }
+
+        // Re-add buttons when IRRE (inline) elements are added/updated
+        document.addEventListener('t3-formengine-inline-created', () => {
+            this.addButtonsToFalFields();
+        });
+    }
+
+    addButtonsToFalFields() {
+        // Find all file control wrappers
+        const fileControls = document.querySelectorAll('.t3js-file-controls');
+        
+        fileControls.forEach(controlWrapper => {
+            // Check if we already added the AI button
+            if (controlWrapper.querySelector('.t3js-ai-image-generate-btn')) {
+                return;
+            }
+
+            // Get the IRRE object identifier from existing buttons
+            const existingButton = controlWrapper.querySelector('[data-file-irre-object]');
+            if (!existingButton) {
+                return;
+            }
+
+            const irreObject = existingButton.dataset.fileIrreObject;
+            const targetFolder = existingButton.dataset.targetFolder || '1:/user_upload/';
+
+            // Create AI Image button
+            const aiButton = document.createElement('button');
+            aiButton.type = 'button';
+            aiButton.className = 'btn btn-default t3js-ai-image-generate-btn';
+            aiButton.title = 'Generate AI Image';
+            aiButton.dataset.fileIrreObject = irreObject;
+            aiButton.dataset.targetFolder = targetFolder;
+            
+            aiButton.innerHTML = `
+                <span class="t3js-icon icon icon-size-small icon-state-default" aria-hidden="true">
+                    <span class="icon-markup">✨</span>
+                </span>
+                Generate AI Image
+            `;
+
+            aiButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.openModal(aiButton);
+            });
+
+            // Insert button as first button in the wrapper
+            controlWrapper.insertBefore(aiButton, controlWrapper.firstChild);
+        });
+    }
+
+    openModal(button) {
+        const irreObject = button.dataset.fileIrreObject;
+        const targetFolder = button.dataset.targetFolder;
+        
+        // Create modal content as DOM elements
+        const container = document.createElement('div');
+        container.className = 'ai-image-generator';
+        
+        // Prompt field
+        const promptGroup = document.createElement('div');
+        promptGroup.className = 'form-group';
+        const promptLabel = document.createElement('label');
+        promptLabel.setAttribute('for', 'ai-prompt');
+        promptLabel.textContent = 'Image Prompt';
+        const promptTextarea = document.createElement('textarea');
+        promptTextarea.id = 'ai-prompt';
+        promptTextarea.className = 'form-control';
+        promptTextarea.rows = 4;
+        promptTextarea.placeholder = 'Describe the image you want to generate...';
+        promptGroup.appendChild(promptLabel);
+        promptGroup.appendChild(promptTextarea);
+        
+        // Size field
+        const sizeGroup = document.createElement('div');
+        sizeGroup.className = 'form-group';
+        const sizeLabel = document.createElement('label');
+        sizeLabel.setAttribute('for', 'ai-size');
+        sizeLabel.textContent = 'Image Size';
+        const sizeSelect = document.createElement('select');
+        sizeSelect.id = 'ai-size';
+        sizeSelect.className = 'form-control';
+        const sizes = [
+            { value: '1024x1024', label: '1024x1024 (Square)' },
+            { value: '1024x1792', label: '1024x1792 (Portrait)' },
+            { value: '1792x1024', label: '1792x1024 (Landscape)' }
+        ];
+        sizes.forEach(size => {
+            const option = document.createElement('option');
+            option.value = size.value;
+            option.textContent = size.label;
+            sizeSelect.appendChild(option);
+        });
+        sizeGroup.appendChild(sizeLabel);
+        sizeGroup.appendChild(sizeSelect);
+        
+        // Preview area
+        const previewDiv = document.createElement('div');
+        previewDiv.id = 'ai-preview';
+        previewDiv.className = 'ai-preview';
+        previewDiv.style.display = 'none';
+        const previewImg = document.createElement('img');
+        previewImg.src = '';
+        previewImg.alt = 'Generated Image';
+        previewImg.className = 'img-fluid';
+        previewDiv.appendChild(previewImg);
+        
+        // Hidden fields
+        const irreObjectInput = document.createElement('input');
+        irreObjectInput.type = 'hidden';
+        irreObjectInput.id = 'ai-irre-object';
+        irreObjectInput.value = irreObject;
+        
+        const targetFolderInput = document.createElement('input');
+        targetFolderInput.type = 'hidden';
+        targetFolderInput.id = 'ai-target-folder';
+        targetFolderInput.value = targetFolder;
+        
+        // Append all to container
+        container.appendChild(promptGroup);
+        container.appendChild(sizeGroup);
+        container.appendChild(previewDiv);
+        container.appendChild(irreObjectInput);
+        container.appendChild(targetFolderInput);
+
+        this.currentModal = Modal.advanced({
+            title: 'Generate AI Image',
+            content: container,
+            size: Modal.sizes.large,
+            buttons: [
+                {
+                    text: 'Cancel',
+                    btnClass: 'btn-default',
+                    trigger: () => {
+                        this.currentModal.hideModal();
+                    }
+                },
+                {
+                    text: 'Generate',
+                    btnClass: 'btn-primary',
+                    trigger: () => {
+                        this.generateImage();
+                    }
+                }
+            ]
+        });
+    }
+
+    async generateImage() {
+        // Get elements from the modal content
+        const promptElement = this.currentModal.querySelector('#ai-prompt');
+        const sizeElement = this.currentModal.querySelector('#ai-size');
+        const irreObjectElement = this.currentModal.querySelector('#ai-irre-object');
+        
+        if (!promptElement || !sizeElement || !irreObjectElement) {
+            Notification.error('Error', 'Modal elements not found');
+            return;
+        }
+        
+        const prompt = promptElement.value;
+        const size = sizeElement.value;
+        const irreObject = irreObjectElement.value;
+
+        if (!prompt) {
+            Notification.error('Error', 'Please enter a prompt');
+            return;
+        }
+
+        const generateBtn = this.currentModal.querySelectorAll('.btn-primary')[0];
+        const originalText = generateBtn.textContent;
+        generateBtn.disabled = true;
+        generateBtn.textContent = 'Generating...';
+
+        try {
+            // Use direct route path instead of TYPO3.settings.ajaxUrls
+            const ajaxUrl = TYPO3.settings.ajaxUrls?.ig_ai_images_generate || '/typo3/ig-ai-images/generate';
+            
+            const response = await new AjaxRequest(ajaxUrl)
+                .post({
+                    prompt: prompt,
+                    size: size
+                });
+
+            const result = await response.resolve();
+
+            if (result.success) {
+                // Show preview
+                const preview = this.currentModal.querySelector('#ai-preview');
+                const img = preview.querySelector('img');
+                img.src = result.url;
+                preview.style.display = 'block';
+
+                Notification.success('Success', 'Image generated successfully!');
+
+                // Update the button to "Use Image"
+                generateBtn.textContent = 'Use Image';
+                generateBtn.disabled = false;
+                generateBtn.onclick = () => {
+                    this.useGeneratedImage(result.fileUid, irreObject);
+                };
+            } else {
+                Notification.error('Error', result.error || 'Failed to generate image');
+                generateBtn.disabled = false;
+                generateBtn.textContent = originalText;
+            }
+        } catch (error) {
+            // Only show error if modal is still open (not closing due to page save)
+            if (this.currentModal && document.body.contains(this.currentModal)) {
+                Notification.error('Error', 'Failed to generate image: ' + error.message);
+            }
+            generateBtn.disabled = false;
+            generateBtn.textContent = originalText;
+        }
+    }
+
+    useGeneratedImage(fileUid, irreObject) {
+        // TYPO3 uses postMessage to communicate between element browser and inline containers
+        // Send a message to add the file reference
+        const message = {
+            actionName: 'typo3:foreignRelation:insert',
+            objectGroup: irreObject,
+            table: 'sys_file',
+            uid: fileUid
+        };
+        
+        // Use TYPO3's MessageUtility to send the message properly
+        MessageUtility.send(message);
+        
+        Notification.success('Success', 'Image has been added to the field');
+        
+        // Close modal and clean up
+        this.currentModal.hideModal();
+        this.currentModal = null;
+    }
+}
+
+// Initialize when module is loaded
+const aiImageWizard = new AiImageWizard();
+
+// Expose to global TYPO3 namespace for compatibility
+if (typeof TYPO3 === 'undefined') {
+    window.TYPO3 = {};
+}
+TYPO3.IgAiImages = aiImageWizard;
+
+export default aiImageWizard;

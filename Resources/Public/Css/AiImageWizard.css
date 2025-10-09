@@ -1,0 +1,29 @@
+.ai-image-generator {
+    padding: 20px;
+}
+
+.ai-image-generator .form-group {
+    margin-bottom: 20px;
+}
+
+.ai-image-generator label {
+    font-weight: bold;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.ai-preview {
+    margin-top: 20px;
+    text-align: center;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #f9f9f9;
+}
+
+.ai-preview img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
