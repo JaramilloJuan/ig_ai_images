@@ -45,6 +45,8 @@ final class PageRendererHook
     
     /**
      * Get enabled fields from TCA configuration
+     * 
+     * @return array<int, array{table: string, field: string}>
      */
     private function getEnabledFieldsFromTCA(): array
     {
