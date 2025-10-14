@@ -3,5 +3,6 @@ services:
     autowire: true
     autoconfigure: true
     public: false
+
   Igelb\IgAiImages\:
     resource: '../Classes/*'
