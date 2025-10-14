@@ -5,12 +5,15 @@ import Modal from '@typo3/backend/modal.js';
 import Notification from '@typo3/backend/notification.js';
 import AjaxRequest from '@typo3/core/ajax/ajax-request.js';
 import {MessageUtility} from '@typo3/backend/utility/message-utility.js';
+import Icons from '@typo3/backend/icons.js';
 
 class AiImageWizard {
     constructor() {
         this.currentModal = null;
         this.enabledFields = [];
         this.debug = true; // Enable debugging
+        this.iconOn = "actions-infinity";
+        this.iconOff = "spinner-circle";
         this.init();
     }
 
@@ -291,7 +294,7 @@ class AiImageWizard {
             console.log(`AiImageWizard: Found ${fileControls.length} file controls`);
         }
         
-        fileControls.forEach((controlWrapper, index) => {
+        fileControls.forEach(async (controlWrapper, index) => {
             if (this.debug) {
                 console.log(`AiImageWizard: Processing file control ${index + 1}`);
             }
@@ -351,7 +354,10 @@ class AiImageWizard {
             if (this.debug) {
                 console.log('AiImageWizard: Adding AI button for', tableAndField, 'with irreObject:', irreObject);
             }
-
+            
+            // Get the icon HTML from TYPO3 Icons API
+            const iconHtml = await Icons.getIcon(this.iconOn, Icons.sizes.small);
+            
             // Create AI Image button
             const aiButton = document.createElement('button');
             aiButton.type = 'button';
@@ -360,13 +366,8 @@ class AiImageWizard {
             aiButton.dataset.fileIrreObject = irreObject;
             aiButton.dataset.targetFolder = targetFolder;
             
-            aiButton.innerHTML = `
-                <span class="t3js-icon icon icon-size-small icon-state-default" aria-hidden="true">
-                    <span class="icon-markup">✨</span>
-                </span>
-                Generate AI Image
-            `;
-
+            aiButton.innerHTML = `${iconHtml} Generate AI Image`;
+            
             aiButton.addEventListener('click', (e) => {
                 e.preventDefault();
                 this.openModal(aiButton);
@@ -501,7 +502,10 @@ class AiImageWizard {
         const generateBtn = this.currentModal.querySelectorAll('.btn-primary')[0];
         const originalText = generateBtn.textContent;
         generateBtn.disabled = true;
-        generateBtn.textContent = 'Generating...';
+        
+        // Update button icon to spinner
+        const spinnerIcon = await Icons.getIcon(this.iconOff, Icons.sizes.small);
+        generateBtn.innerHTML = `${spinnerIcon} Generating...`;
 
         try {
             // Use direct route path instead of TYPO3.settings.ajaxUrls
@@ -524,8 +528,9 @@ class AiImageWizard {
 
                 Notification.success('Success', 'Image generated successfully!');
 
-                // Update the button to "Use Image"
-                generateBtn.textContent = 'Use Image';
+                // Update the button to "Use Image" with check icon
+                const checkIcon = await Icons.getIcon('actions-check', Icons.sizes.small);
+                generateBtn.innerHTML = `${checkIcon} Use Image`;
                 generateBtn.disabled = false;
                 generateBtn.onclick = () => {
                     this.useGeneratedImage(result.fileUid, irreObject);
@@ -533,7 +538,10 @@ class AiImageWizard {
             } else {
                 Notification.error('Error', result.error || 'Failed to generate image');
                 generateBtn.disabled = false;
-                generateBtn.textContent = originalText;
+                
+                // Reset to original icon
+                const originalIcon = await Icons.getIcon(this.iconOn, Icons.sizes.small);
+                generateBtn.innerHTML = `${originalIcon} ${originalText}`;
             }
         } catch (error) {
             // Only show error if modal is still open (not closing due to page save)
@@ -541,7 +549,10 @@ class AiImageWizard {
                 Notification.error('Error', 'Failed to generate image: ' + error.message);
             }
             generateBtn.disabled = false;
-            generateBtn.textContent = originalText;
+            
+            // Reset to original icon
+            const originalIcon = await Icons.getIcon(this.iconOn, Icons.sizes.small);
+            generateBtn.innerHTML = `${originalIcon} ${originalText}`;
         }
     }
 
