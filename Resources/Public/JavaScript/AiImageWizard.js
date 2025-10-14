@@ -44,8 +44,92 @@ class AiImageWizard {
             if (this.debug) {
                 console.log('AiImageWizard: IRRE element created, re-adding buttons');
             }
-            this.addButtonsToFalFields();
+            setTimeout(() => this.addButtonsToFalFields(), 100);
         });
+
+        // Re-add buttons when inline records are deleted or modified
+        document.addEventListener('click', (e) => {
+            // Handle delete buttons
+            if (e.target.matches('.t3js-editform-delete-file-reference, .t3js-editform-delete-file-reference *')) {
+                if (this.debug) {
+                    console.log('AiImageWizard: File reference delete detected');
+                }
+                setTimeout(() => {
+                    this.addButtonsToFalFields();
+                }, 100);
+            }
+        });
+
+        // Listen for DOM changes in file containers to detect when files are removed
+        this.observeFileContainers();
+
+        // Also listen for TYPO3 form engine events
+        document.addEventListener('typo3:formengine:field-change', () => {
+            if (this.debug) {
+                console.log('AiImageWizard: Form engine field change detected');
+            }
+            setTimeout(() => this.addButtonsToFalFields(), 100);
+        });
+    }
+
+    /**
+     * Observe file containers for changes (files being added/removed)
+     */
+    observeFileContainers() {
+        const observer = new MutationObserver((mutations) => {
+            let shouldRefresh = false;
+            
+            mutations.forEach((mutation) => {
+                // Check if nodes were added or removed in file containers
+                if (mutation.type === 'childList') {
+                    const target = mutation.target;
+                    
+                    // Check if the change happened in a file container
+                    if (target.matches('typo3-formengine-container-files, .panel-group') || 
+                        target.closest('typo3-formengine-container-files, .panel-group')) {
+                        
+                        if (this.debug) {
+                            console.log('AiImageWizard: File container change detected via MutationObserver');
+                        }
+                        shouldRefresh = true;
+                    }
+                }
+                
+                // Check for attribute changes that might indicate visibility changes
+                if (mutation.type === 'attributes' && 
+                    (mutation.attributeName === 'style' || mutation.attributeName === 'hidden')) {
+                    
+                    const target = mutation.target;
+                    if (target.matches('.t3js-element-browser, .t3js-drag-uploader') ||
+                        target.closest('.t3js-file-controls')) {
+                        
+                        if (this.debug) {
+                            console.log('AiImageWizard: Button visibility change detected');
+                        }
+                        shouldRefresh = true;
+                    }
+                }
+            });
+            
+            if (shouldRefresh) {
+                // Debounce the refresh to avoid multiple rapid updates
+                clearTimeout(this.refreshTimeout);
+                this.refreshTimeout = setTimeout(() => {
+                    this.addButtonsToFalFields();
+                }, 150);
+            }
+        });
+
+        // Start observing
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['style', 'hidden', 'class']
+        });
+
+        // Store observer reference for potential cleanup
+        this.mutationObserver = observer;
     }
 
     /**
@@ -171,6 +255,30 @@ class AiImageWizard {
         return tableAndField;
     }
 
+    /**
+     * Check if field has reached maxitems limit
+     */
+    hasReachedMaxItems(controlWrapper) {
+        const containerFiles = controlWrapper.closest('typo3-formengine-container-files');
+        if (!containerFiles) {
+            return false;
+        }
+
+        // Check if other buttons are hidden (indicating maxitems reached)
+        const otherButtons = controlWrapper.querySelectorAll('.t3js-element-browser, .t3js-drag-uploader');
+        const hiddenButtons = Array.from(otherButtons).filter(btn => 
+            btn.style.display === 'none' || btn.hasAttribute('hidden')
+        );
+
+        const hasReached = hiddenButtons.length > 0;
+        
+        if (this.debug) {
+            console.log(`AiImageWizard: MaxItems reached: ${hasReached}`);
+        }
+        
+        return hasReached;
+    }
+
     addButtonsToFalFields() {
         if (this.debug) {
             console.log('AiImageWizard: Looking for file controls...');
@@ -188,6 +296,23 @@ class AiImageWizard {
                 console.log(`AiImageWizard: Processing file control ${index + 1}`);
             }
 
+            // Check if maxitems is reached - if so, don't show AI button
+            if (this.hasReachedMaxItems(controlWrapper)) {
+                if (this.debug) {
+                    console.log('AiImageWizard: MaxItems reached, not showing AI button');
+                }
+                
+                // Remove existing AI button if maxitems reached
+                const existingAiButton = controlWrapper.querySelector('.t3js-ai-image-generate-btn');
+                if (existingAiButton) {
+                    existingAiButton.remove();
+                    if (this.debug) {
+                        console.log('AiImageWizard: Removed existing AI button due to maxitems');
+                    }
+                }
+                return;
+            }
+
             // Check if we already added the AI button
             if (controlWrapper.querySelector('.t3js-ai-image-generate-btn')) {
                 if (this.debug) {
@@ -196,7 +321,7 @@ class AiImageWizard {
                 return;
             }
 
-            // Get the IRRE object identifier from existing buttons
+            // Get the IRRE object identifier from existing buttons (including hidden ones)
             const existingButton = controlWrapper.querySelector('[data-file-irre-object]');
             if (!existingButton) {
                 if (this.debug) {
@@ -438,6 +563,11 @@ class AiImageWizard {
         // Close modal and clean up
         this.currentModal.hideModal();
         this.currentModal = null;
+        
+        // Refresh buttons after adding image
+        setTimeout(() => {
+            this.addButtonsToFalFields();
+        }, 500);
     }
 }
 
