@@ -25,6 +25,15 @@ class AiImageController
         }
 
         $parsedBody = $request->getParsedBody();
+        
+        // Ensure $parsedBody is an array
+        if (!is_array($parsedBody)) {
+            return new JsonResponse([
+                'success' => false,
+                'error' => 'Invalid request body',
+            ], 400);
+        }
+        
         $prompt = $parsedBody['prompt'] ?? '';
         $size = $parsedBody['size'] ?? '1024x1024';
 
@@ -40,9 +49,25 @@ class AiImageController
             $result = $openAiService->generateImage($prompt, $size);
 
             if ($result['success']) {
+                // Ensure required keys exist in success response
+                if (!isset($result['url']) || !isset($result['prompt'])) {
+                    return new JsonResponse([
+                        'success' => false,
+                        'error' => 'Invalid response from image generation service',
+                    ], 500);
+                }
+                
                 // Download image and convert to base64 data URL for display in modal
                 // This bypasses CSP restrictions
                 $imageContent = GeneralUtility::getUrl($result['url']);
+                
+                if ($imageContent === false) {
+                    return new JsonResponse([
+                        'success' => false,
+                        'error' => 'Failed to download generated image',
+                    ], 500);
+                }
+                
                 $base64Image = 'data:image/png;base64,' . base64_encode($imageContent);
                 
                 // Save image to FAL

@@ -20,6 +20,9 @@ class OpenAiService
         $this->apiKey = $_ENV['OPENAI_API_KEY'] ?? '';
     }
 
+    /**
+     * @return array{success: bool, error?: string, url?: string, prompt?: string}
+     */
     public function generateImage(string $prompt, string $size = '1024x1024'): array
     {
         if (empty($this->apiKey)) {
@@ -96,6 +99,11 @@ class OpenAiService
             // Now add the temporary file to FAL
             $storageRepository = GeneralUtility::makeInstance(StorageRepository::class);
             $storage = $storageRepository->getDefaultStorage();
+            
+            if ($storage === null) {
+                throw new \RuntimeException('No default storage found');
+            }
+            
             $targetFolder = $storage->getFolder('user_upload/');
             
             $file = $storage->addFile(

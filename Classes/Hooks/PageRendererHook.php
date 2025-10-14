@@ -12,6 +12,9 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 final class PageRendererHook
 {
+    /**
+     * @param array<string, mixed> $params
+     */
     public function addJavaScriptModules(array $params, PageRenderer $pageRenderer): void
     {
         $request = $GLOBALS['TYPO3_REQUEST'] ?? null;

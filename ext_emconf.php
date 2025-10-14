@@ -1,5 +1,5 @@
 <?php
-
+/** @phpstan-ignore-next-line */
 $EM_CONF[$_EXTKEY] = [
     'title' => 'IG AI Images',
     'description' => 'AI Image processing extension for TYPO3',
