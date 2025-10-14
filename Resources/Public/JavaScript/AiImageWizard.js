@@ -9,11 +9,30 @@ import {MessageUtility} from '@typo3/backend/utility/message-utility.js';
 class AiImageWizard {
     constructor() {
         this.currentModal = null;
+        this.enabledFields = [];
+        this.debug = true; // Enable debugging
         this.init();
     }
 
     init() {
-        // Wait for DOM to be ready and add buttons to all FAL fields
+        // Get configuration from TYPO3 settings
+        if (TYPO3.settings && TYPO3.settings.igAiImages && TYPO3.settings.igAiImages.enabledFields) {
+            this.enabledFields = TYPO3.settings.igAiImages.enabledFields;
+        }
+
+        if (this.debug) {
+            console.log('AiImageWizard: Enabled fields:', this.enabledFields);
+        }
+
+        // If no fields are configured, don't add any buttons
+        if (this.enabledFields.length === 0) {
+            if (this.debug) {
+                console.log('AiImageWizard: No enabled fields configured');
+            }
+            return;
+        }
+
+        // Wait for DOM to be ready and add buttons to configured FAL fields
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.addButtonsToFalFields());
         } else {
@@ -22,28 +41,191 @@ class AiImageWizard {
 
         // Re-add buttons when IRRE (inline) elements are added/updated
         document.addEventListener('t3-formengine-inline-created', () => {
+            if (this.debug) {
+                console.log('AiImageWizard: IRRE element created, re-adding buttons');
+            }
             this.addButtonsToFalFields();
         });
     }
 
+    /**
+     * Check if AI button should be shown for this field
+     */
+    isFieldEnabled(table, fieldName) {
+        const isEnabled = this.enabledFields.some(config => 
+            config.table === table && config.field === fieldName
+        );
+        if (this.debug) {
+            console.log(`AiImageWizard: Checking field ${table}.${fieldName}: ${isEnabled ? 'enabled' : 'disabled'}`);
+        }
+        return isEnabled;
+    }
+
+    /**
+     * Extract table and field name from various sources
+     */
+    getTableAndFieldInfo(controlWrapper) {
+        let tableAndField = null;
+
+        // Method 1: Check for typo3-formengine-container-files element (TYPO3 13+)
+        const containerFiles = controlWrapper.closest('typo3-formengine-container-files');
+        if (containerFiles) {
+            const localTable = containerFiles.getAttribute('data-local-table');
+            const localField = containerFiles.getAttribute('data-local-field');
+            
+            if (localTable && localField) {
+                tableAndField = {
+                    table: localTable,
+                    field: localField
+                };
+                if (this.debug) {
+                    console.log('AiImageWizard: Found table/field from typo3-formengine-container-files:', tableAndField);
+                }
+                return tableAndField;
+            }
+        }
+
+        // Method 2: Try to get from form group data attributes
+        const formGroup = controlWrapper.closest('.form-group[data-local-table][data-local-field]');
+        if (formGroup) {
+            const localTable = formGroup.getAttribute('data-local-table');
+            const localField = formGroup.getAttribute('data-local-field');
+            
+            if (localTable && localField) {
+                tableAndField = {
+                    table: localTable,
+                    field: localField
+                };
+                if (this.debug) {
+                    console.log('AiImageWizard: Found table/field from form group:', tableAndField);
+                }
+                return tableAndField;
+            }
+        }
+
+        // Method 3: Try to get from form field names in the container
+        const formContainer = controlWrapper.closest('.t3js-formengine-field-item, .t3js-formengine-inline-item');
+        if (formContainer) {
+            const hiddenInputs = formContainer.querySelectorAll('input[type="hidden"]');
+            for (const input of hiddenInputs) {
+                if (input.name && input.name.includes('data[')) {
+                    const match = input.name.match(/data\[([^\]]+)\]\[\d+\]\[([^\]]+)\]/);
+                    if (match) {
+                        tableAndField = {
+                            table: match[1],
+                            field: match[2]
+                        };
+                        if (this.debug) {
+                            console.log('AiImageWizard: Found table/field from hidden input:', tableAndField);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Method 4: Try to get from data attributes
+        if (!tableAndField) {
+            const inlineItem = controlWrapper.closest('[data-object-group]');
+            if (inlineItem && inlineItem.dataset.objectGroup) {
+                const objectGroup = inlineItem.dataset.objectGroup;
+                // Object group format: data[tx_news_domain_model_news][123][fal_media]
+                const match = objectGroup.match(/data\[([^\]]+)\]\[\d+\]\[([^\]]+)\]/);
+                if (match) {
+                    tableAndField = {
+                        table: match[1],
+                        field: match[2]
+                    };
+                    if (this.debug) {
+                        console.log('AiImageWizard: Found table/field from object group:', tableAndField);
+                    }
+                }
+            }
+        }
+
+        // Method 5: Try to get from form element data
+        if (!tableAndField) {
+            const formElement = controlWrapper.closest('[data-fieldname]');
+            if (formElement && formElement.dataset.fieldname) {
+                const fieldName = formElement.dataset.fieldname;
+                const editForm = controlWrapper.closest('form[name="editform"]');
+                if (editForm) {
+                    // Look for table information in the form
+                    const tableInputs = editForm.querySelectorAll('input[name*="[table]"]');
+                    for (const tableInput of tableInputs) {
+                        if (tableInput.value) {
+                            tableAndField = {
+                                table: tableInput.value,
+                                field: fieldName
+                            };
+                            if (this.debug) {
+                                console.log('AiImageWizard: Found table/field from form data:', tableAndField);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return tableAndField;
+    }
+
     addButtonsToFalFields() {
+        if (this.debug) {
+            console.log('AiImageWizard: Looking for file controls...');
+        }
+
         // Find all file control wrappers
         const fileControls = document.querySelectorAll('.t3js-file-controls');
         
-        fileControls.forEach(controlWrapper => {
+        if (this.debug) {
+            console.log(`AiImageWizard: Found ${fileControls.length} file controls`);
+        }
+        
+        fileControls.forEach((controlWrapper, index) => {
+            if (this.debug) {
+                console.log(`AiImageWizard: Processing file control ${index + 1}`);
+            }
+
             // Check if we already added the AI button
             if (controlWrapper.querySelector('.t3js-ai-image-generate-btn')) {
+                if (this.debug) {
+                    console.log('AiImageWizard: AI button already exists, skipping');
+                }
                 return;
             }
 
             // Get the IRRE object identifier from existing buttons
             const existingButton = controlWrapper.querySelector('[data-file-irre-object]');
             if (!existingButton) {
+                if (this.debug) {
+                    console.log('AiImageWizard: No existing button with data-file-irre-object found');
+                }
+                return;
+            }
+
+            // Try to determine table and field
+            const tableAndField = this.getTableAndFieldInfo(controlWrapper);
+
+            if (!tableAndField) {
+                if (this.debug) {
+                    console.log('AiImageWizard: Could not determine table and field');
+                }
+                return;
+            }
+
+            // Check if this field is enabled for AI generation
+            if (!this.isFieldEnabled(tableAndField.table, tableAndField.field)) {
                 return;
             }
 
             const irreObject = existingButton.dataset.fileIrreObject;
             const targetFolder = existingButton.dataset.targetFolder || '1:/user_upload/';
+
+            if (this.debug) {
+                console.log('AiImageWizard: Adding AI button for', tableAndField, 'with irreObject:', irreObject);
+            }
 
             // Create AI Image button
             const aiButton = document.createElement('button');
@@ -67,6 +249,10 @@ class AiImageWizard {
 
             // Insert button as first button in the wrapper
             controlWrapper.insertBefore(aiButton, controlWrapper.firstChild);
+
+            if (this.debug) {
+                console.log('AiImageWizard: AI button added successfully');
+            }
         });
     }
 

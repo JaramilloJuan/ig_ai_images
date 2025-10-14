@@ -21,7 +21,10 @@ final class PageRendererHook
         if (!$request || !ApplicationType::fromRequest($request)->isBackend()) {
             return;
         }
-
+        
+        // Get enabled fields from TCA configuration
+        $enabledFields = $this->getEnabledFieldsFromTCA();
+        
         // Add JavaScript module using the registered alias from JavaScriptModules.php
         // CSS wird automatisch über JavaScriptModules.php geladen
         $pageRenderer->getJavaScriptRenderer()->addJavaScriptModuleInstruction(
@@ -33,5 +36,40 @@ final class PageRendererHook
         $pageRenderer->addInlineSettingArray('ajaxUrls', [
             'ig_ai_images_generate' => (string)$uriBuilder->buildUriFromRoute('ig_ai_images_generate')
         ]);
+        
+        // Add configuration for enabled fields
+        $pageRenderer->addInlineSettingArray('igAiImages', [
+            'enabledFields' => $enabledFields
+        ]);
+    }
+    
+    /**
+     * Get enabled fields from TCA configuration
+     */
+    private function getEnabledFieldsFromTCA(): array
+    {
+        $enabledFields = [];
+        
+        // Iterate through all TCA tables
+        foreach ($GLOBALS['TCA'] ?? [] as $table => $tableConfig) {
+            if (!isset($tableConfig['columns'])) {
+                continue;
+            }
+            
+            // Check each column for aiImageGeneration flag
+            foreach ($tableConfig['columns'] as $fieldName => $fieldConfig) {
+                if (isset($fieldConfig['config']['aiImageGeneration']) && 
+                    $fieldConfig['config']['aiImageGeneration'] === true &&
+                    $fieldConfig['config']['type'] === 'file') {
+                    
+                    $enabledFields[] = [
+                        'table' => $table,
+                        'field' => $fieldName
+                    ];
+                }
+            }
+        }
+        
+        return $enabledFields;
     }
 }
