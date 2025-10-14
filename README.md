@@ -42,17 +42,6 @@ OPENAI_API_KEY='your-api-key-here'
 - **AiImageWizard**: Field Wizard für TCA-Felder
 - **AiImageWizard.js**: Frontend-JavaScript für Modal und AJAX
 
-### Erweiterung für andere Felder
-
-Um den AI Image Wizard für andere Felder zu aktivieren, erstelle eine TCA Override-Datei:
-
-```php
-$GLOBALS['TCA']['your_table']['columns']['your_image_field']['config']['fieldWizard']['aiImageWizard'] = [
-    'renderType' => 'aiImageWizard',
-    'after' => ['localizationStateSelector'],
-];
-```
-
 ## Anforderungen
 
 - TYPO3 13.x
