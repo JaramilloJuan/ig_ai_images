@@ -258,10 +258,4 @@ class AiImageWizard {
 // Initialize when module is loaded
 const aiImageWizard = new AiImageWizard();
 
-// Expose to global TYPO3 namespace for compatibility
-if (typeof TYPO3 === 'undefined') {
-    window.TYPO3 = {};
-}
-TYPO3.IgAiImages = aiImageWizard;
-
 export default aiImageWizard;
