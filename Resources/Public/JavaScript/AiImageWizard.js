@@ -14,6 +14,7 @@ class AiImageWizard {
         this.debug = true; // Enable debugging
         this.iconOn = "actions-infinity";
         this.iconOff = "spinner-circle";
+        this.generatedImageData = null; // Store generated image data
         this.init();
     }
 
@@ -432,11 +433,64 @@ class AiImageWizard {
         previewDiv.id = 'ai-preview';
         previewDiv.className = 'ai-preview';
         previewDiv.style.display = 'none';
+        previewDiv.style.marginBottom = '20px';
         const previewImg = document.createElement('img');
         previewImg.src = '';
         previewImg.alt = 'Generated Image';
         previewImg.className = 'img-fluid';
+        previewImg.style.maxWidth = '100%';
+        previewImg.style.maxHeight = '300px';
         previewDiv.appendChild(previewImg);
+
+        // Storage/Folder selection (initially hidden)
+        const saveOptionsDiv = document.createElement('div');
+        saveOptionsDiv.id = 'ai-save-options';
+        saveOptionsDiv.style.display = 'none';
+        saveOptionsDiv.style.borderTop = '1px solid #ddd';
+        saveOptionsDiv.style.paddingTop = '20px';
+        saveOptionsDiv.style.marginTop = '20px';
+
+        // Storage selection
+        const storageGroup = document.createElement('div');
+        storageGroup.className = 'form-group';
+        const storageLabel = document.createElement('label');
+        storageLabel.setAttribute('for', 'ai-storage');
+        storageLabel.textContent = 'Storage';
+        const storageSelect = document.createElement('select');
+        storageSelect.id = 'ai-storage';
+        storageSelect.className = 'form-control';
+        storageGroup.appendChild(storageLabel);
+        storageGroup.appendChild(storageSelect);
+
+        // Folder selection
+        const folderGroup = document.createElement('div');
+        folderGroup.className = 'form-group';
+        const folderLabel = document.createElement('label');
+        folderLabel.setAttribute('for', 'ai-folder');
+        folderLabel.textContent = 'Folder';
+        const folderSelect = document.createElement('select');
+        folderSelect.id = 'ai-folder';
+        folderSelect.className = 'form-control';
+        folderGroup.appendChild(folderLabel);
+        folderGroup.appendChild(folderSelect);
+
+        // Filename field
+        const filenameGroup = document.createElement('div');
+        filenameGroup.className = 'form-group';
+        const filenameLabel = document.createElement('label');
+        filenameLabel.setAttribute('for', 'ai-filename');
+        filenameLabel.textContent = 'Filename';
+        const filenameInput = document.createElement('input');
+        filenameInput.type = 'text';
+        filenameInput.id = 'ai-filename';
+        filenameInput.className = 'form-control';
+        filenameInput.value = 'ai_generated_' + Date.now() + '.png';
+        filenameGroup.appendChild(filenameLabel);
+        filenameGroup.appendChild(filenameInput);
+
+        saveOptionsDiv.appendChild(storageGroup);
+        saveOptionsDiv.appendChild(folderGroup);
+        saveOptionsDiv.appendChild(filenameGroup);
         
         // Hidden fields
         const irreObjectInput = document.createElement('input');
@@ -453,8 +507,14 @@ class AiImageWizard {
         container.appendChild(promptGroup);
         container.appendChild(sizeGroup);
         container.appendChild(previewDiv);
+        container.appendChild(saveOptionsDiv);
         container.appendChild(irreObjectInput);
         container.appendChild(targetFolderInput);
+
+        // Storage change handler
+        storageSelect.addEventListener('change', () => {
+            this.loadFolders(storageSelect.value, folderSelect);
+        });
 
         this.currentModal = Modal.advanced({
             title: 'Generate AI Image',
@@ -477,22 +537,90 @@ class AiImageWizard {
                 }
             ]
         });
+
+        // Load storages after modal is shown
+        this.loadStorages(storageSelect, folderSelect);
+    }
+
+    async loadStorages(storageSelect, folderSelect) {
+        try {
+            const ajaxUrl = TYPO3.settings.ajaxUrls?.ig_ai_images_storages || '/typo3/ig-ai-images/storages';
+            const response = await new AjaxRequest(ajaxUrl).get();
+            const result = await response.resolve();
+
+            if (result.success && result.storages) {
+                // Clear existing options
+                storageSelect.innerHTML = '';
+                
+                // Add storage options
+                let defaultStorageUid = null;
+                result.storages.forEach(storage => {
+                    const option = document.createElement('option');
+                    option.value = storage.uid;
+                    option.textContent = storage.name;
+                    if (storage.isDefault) {
+                        option.selected = true;
+                        defaultStorageUid = storage.uid;
+                    }
+                    storageSelect.appendChild(option);
+                });
+
+                // Load folders for default storage
+                if (defaultStorageUid) {
+                    this.loadFolders(defaultStorageUid, folderSelect);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load storages:', error);
+            Notification.error('Error', 'Failed to load available storages');
+        }
+    }
+
+    async loadFolders(storageUid, folderSelect) {
+        try {
+            const ajaxUrl = TYPO3.settings.ajaxUrls?.ig_ai_images_folders || '/typo3/ig-ai-images/folders';
+            const response = await new AjaxRequest(ajaxUrl + '?storage=' + storageUid).get();
+            const result = await response.resolve();
+
+            if (result.success && result.folders) {
+                // Clear existing options
+                folderSelect.innerHTML = '';
+                
+                // Add root option
+                const rootOption = document.createElement('option');
+                rootOption.value = '';
+                rootOption.textContent = '/ (Root)';
+                folderSelect.appendChild(rootOption);
+
+                // Add folder options
+                result.folders.forEach(folder => {
+                    const option = document.createElement('option');
+                    option.value = folder.path;
+                    option.textContent = folder.path;
+                    if (folder.path === 'user_upload/') {
+                        option.selected = true;
+                    }
+                    folderSelect.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load folders:', error);
+            Notification.error('Error', 'Failed to load folders');
+        }
     }
 
     async generateImage() {
         // Get elements from the modal content
         const promptElement = this.currentModal.querySelector('#ai-prompt');
         const sizeElement = this.currentModal.querySelector('#ai-size');
-        const irreObjectElement = this.currentModal.querySelector('#ai-irre-object');
         
-        if (!promptElement || !sizeElement || !irreObjectElement) {
+        if (!promptElement || !sizeElement) {
             Notification.error('Error', 'Modal elements not found');
             return;
         }
         
         const prompt = promptElement.value;
         const size = sizeElement.value;
-        const irreObject = irreObjectElement.value;
 
         if (!prompt) {
             Notification.error('Error', 'Please enter a prompt');
@@ -508,7 +636,6 @@ class AiImageWizard {
         generateBtn.innerHTML = `${spinnerIcon} Generating...`;
 
         try {
-            // Use direct route path instead of TYPO3.settings.ajaxUrls
             const ajaxUrl = TYPO3.settings.ajaxUrls?.ig_ai_images_generate || '/typo3/ig-ai-images/generate';
             
             const response = await new AjaxRequest(ajaxUrl)
@@ -520,20 +647,31 @@ class AiImageWizard {
             const result = await response.resolve();
 
             if (result.success) {
+                // Store generated image data for later saving
+                this.generatedImageData = {
+                    url: result.url,
+                    originalUrl: result.originalUrl,
+                    prompt: result.prompt
+                };
+
                 // Show preview
                 const preview = this.currentModal.querySelector('#ai-preview');
                 const img = preview.querySelector('img');
                 img.src = result.url;
                 preview.style.display = 'block';
 
-                Notification.success('Success', 'Image generated successfully!');
+                // Show save options
+                const saveOptions = this.currentModal.querySelector('#ai-save-options');
+                saveOptions.style.display = 'block';
 
-                // Update the button to "Use Image" with check icon
-                const checkIcon = await Icons.getIcon('actions-check', Icons.sizes.small);
-                generateBtn.innerHTML = `${checkIcon} Use Image`;
+                Notification.success('Success', 'Image generated successfully!');
+                
+                // Update the button to "Save Image"
+                const checkIcon = await Icons.getIcon('actions-document-save', Icons.sizes.small);
+                generateBtn.innerHTML = `${checkIcon} Save Image`;
                 generateBtn.disabled = false;
                 generateBtn.onclick = () => {
-                    this.useGeneratedImage(result.fileUid, irreObject);
+                    this.saveGeneratedImage();
                 };
             } else {
                 Notification.error('Error', result.error || 'Failed to generate image');
@@ -544,7 +682,6 @@ class AiImageWizard {
                 generateBtn.innerHTML = `${originalIcon} ${originalText}`;
             }
         } catch (error) {
-            // Only show error if modal is still open (not closing due to page save)
             if (this.currentModal && document.body.contains(this.currentModal)) {
                 Notification.error('Error', 'Failed to generate image: ' + error.message);
             }
@@ -556,9 +693,67 @@ class AiImageWizard {
         }
     }
 
+    async saveGeneratedImage() {
+        if (!this.generatedImageData) {
+            Notification.error('Error', 'No generated image to save');
+            return;
+        }
+
+        const storageSelect = this.currentModal.querySelector('#ai-storage');
+        const folderSelect = this.currentModal.querySelector('#ai-folder');
+        const filenameInput = this.currentModal.querySelector('#ai-filename');
+        const irreObjectInput = this.currentModal.querySelector('#ai-irre-object');
+
+        const storage = storageSelect.value;
+        const folder = folderSelect.value || 'user_upload/';
+        const filename = filenameInput.value;
+        const irreObject = irreObjectInput.value;
+
+        if (!filename) {
+            Notification.error('Error', 'Please enter a filename');
+            return;
+        }
+
+        const saveBtn = this.currentModal.querySelectorAll('.btn-primary')[0];
+        saveBtn.disabled = true;
+        
+        const spinnerIcon = await Icons.getIcon(this.iconOff, Icons.sizes.small);
+        saveBtn.innerHTML = `${spinnerIcon} Saving...`;
+
+        try {
+            const ajaxUrl = TYPO3.settings.ajaxUrls?.ig_ai_images_save || '/typo3/ig-ai-images/save';
+            
+            const response = await new AjaxRequest(ajaxUrl)
+                .post({
+                    imageUrl: this.generatedImageData.originalUrl,
+                    filename: filename,
+                    storage: storage,
+                    folder: folder
+                });
+
+            const result = await response.resolve();
+
+            if (result.success) {
+                // Use the saved image
+                this.useGeneratedImage(result.fileUid, irreObject);
+            } else {
+                Notification.error('Error', result.error || 'Failed to save image');
+                saveBtn.disabled = false;
+                
+                const saveIcon = await Icons.getIcon('actions-document-save', Icons.sizes.small);
+                saveBtn.innerHTML = `${saveIcon} Save Image`;
+            }
+        } catch (error) {
+            Notification.error('Error', 'Failed to save image: ' + error.message);
+            saveBtn.disabled = false;
+            
+            const saveIcon = await Icons.getIcon('actions-document-save', Icons.sizes.small);
+            saveBtn.innerHTML = `${saveIcon} Save Image`;
+        }
+    }
+
     useGeneratedImage(fileUid, irreObject) {
         // TYPO3 uses postMessage to communicate between element browser and inline containers
-        // Send a message to add the file reference
         const message = {
             actionName: 'typo3:foreignRelation:insert',
             objectGroup: irreObject,
@@ -566,14 +761,14 @@ class AiImageWizard {
             uid: fileUid
         };
         
-        // Use TYPO3's MessageUtility to send the message properly
         MessageUtility.send(message);
         
-        Notification.success('Success', 'Image has been added to the field');
+        Notification.success('Success', 'Image has been saved and added to the field');
         
         // Close modal and clean up
         this.currentModal.hideModal();
         this.currentModal = null;
+        this.generatedImageData = null;
         
         // Refresh buttons after adding image
         setTimeout(() => {

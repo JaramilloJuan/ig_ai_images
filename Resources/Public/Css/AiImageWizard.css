@@ -27,3 +27,60 @@
     border-radius: 4px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
+
+#ai-save-options {
+    background: #f8f9fa;
+    border-radius: 4px;
+    padding: 20px;
+}
+
+#ai-save-options .form-group {
+    margin-bottom: 15px;
+}
+
+#ai-save-options .form-group:last-child {
+    margin-bottom: 0;
+}
+
+.ai-image-generator .row {
+    margin: 0 -10px;
+}
+
+.ai-image-generator .col-md-6 {
+    padding: 0 10px;
+}
+
+/* Make the modal storage/folder selection look nice */
+#ai-save-options h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #333;
+    font-size: 16px;
+}
+
+/* Style for the filename input to make it more prominent */
+#ai-filename {
+    font-family: 'Courier New', monospace;
+    background: #fff;
+}
+
+/* Loading states */
+.ai-image-generator .btn[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .ai-image-generator {
+        padding: 15px;
+    }
+    
+    .ai-preview {
+        padding: 15px;
+    }
+    
+    #ai-save-options {
+        padding: 15px;
+    }
+}

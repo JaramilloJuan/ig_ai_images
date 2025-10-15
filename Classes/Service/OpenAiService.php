@@ -77,7 +77,7 @@ class OpenAiService
         }
     }
 
-    public function saveImageToFal(string $imageUrl, string $filename): ?int
+    public function saveImageToFal(string $imageUrl, string $filename, int $storageUid = 0, string $folderPath = 'user_upload/'): ?int
     {
         try {
             // Download image content
@@ -96,15 +96,40 @@ class OpenAiService
             $tempFile = $tempPath . $filename;
             file_put_contents($tempFile, $imageContent);
 
-            // Now add the temporary file to FAL
+            // Get the storage
             $storageRepository = GeneralUtility::makeInstance(StorageRepository::class);
-            $storage = $storageRepository->getDefaultStorage();
             
-            if ($storage === null) {
-                throw new \RuntimeException('No default storage found');
+            if ($storageUid > 0) {
+                $storage = $storageRepository->findByUid($storageUid);
+                if (!$storage) {
+                    throw new \RuntimeException('Storage with UID ' . $storageUid . ' not found');
+                }
+            } else {
+                $storage = $storageRepository->getDefaultStorage();
+                if ($storage === null) {
+                    throw new \RuntimeException('No default storage found');
+                }
             }
             
-            $targetFolder = $storage->getFolder('user_upload/');
+            // Get or create the target folder
+            try {
+                $targetFolder = $storage->getFolder($folderPath);
+            } catch (\Exception $e) {
+                // If folder doesn't exist, try to create it
+                $folderParts = array_filter(explode('/', trim($folderPath, '/')));
+                $currentFolder = $storage->getRootLevelFolder();
+                
+                foreach ($folderParts as $folderName) {
+                    try {
+                        $currentFolder = $currentFolder->getSubfolder($folderName);
+                    } catch (\Exception $e) {
+                        // Folder doesn't exist, create it
+                        $currentFolder = $currentFolder->createFolder($folderName);
+                    }
+                }
+                
+                $targetFolder = $currentFolder;
+            }
             
             $file = $storage->addFile(
                 $tempFile,
@@ -122,6 +147,7 @@ class OpenAiService
             if (isset($tempFile) && file_exists($tempFile)) {
                 @unlink($tempFile);
             }
+            
             throw new \RuntimeException('Failed to save image to FAL: ' . $e->getMessage());
         }
     }

@@ -25,22 +25,30 @@ final class PageRendererHook
         // Get enabled fields from TCA configuration
         $enabledFields = $this->getEnabledFieldsFromTCA();
         
-        // Add JavaScript module using the registered alias from JavaScriptModules.php
-        // CSS wird automatisch über JavaScriptModules.php geladen
-        $pageRenderer->getJavaScriptRenderer()->addJavaScriptModuleInstruction(
-            JavaScriptModuleInstruction::create('@igelb/ig-ai-images/ai-image-wizard.js')
-        );
+        // Add CSS file (always, even if no fields are configured yet)
+        $pageRenderer->addCssFile('EXT:ig_ai_images/Resources/Public/Css/AiImageWizard.css');
         
-        // Register AJAX URL
-        $uriBuilder = GeneralUtility::makeInstance(UriBuilder::class);
-        $pageRenderer->addInlineSettingArray('ajaxUrls', [
-            'ig_ai_images_generate' => (string)$uriBuilder->buildUriFromRoute('ig_ai_images_generate')
-        ]);
-        
-        // Add configuration for enabled fields
-        $pageRenderer->addInlineSettingArray('igAiImages', [
-            'enabledFields' => $enabledFields
-        ]);
+        // Add JavaScript module and AJAX URLs only if there are enabled fields
+        if (!empty($enabledFields)) {
+            // Add JavaScript module using the registered alias from JavaScriptModules.php
+            $pageRenderer->getJavaScriptRenderer()->addJavaScriptModuleInstruction(
+                JavaScriptModuleInstruction::create('@igelb/ig-ai-images/ai-image-wizard.js')
+            );
+            
+            // Register all AJAX URLs
+            $uriBuilder = GeneralUtility::makeInstance(UriBuilder::class);
+            $pageRenderer->addInlineSettingArray('ajaxUrls', [
+                'ig_ai_images_generate' => (string)$uriBuilder->buildUriFromRoute('ig_ai_images_generate'),
+                'ig_ai_images_save' => (string)$uriBuilder->buildUriFromRoute('ig_ai_images_save'),
+                'ig_ai_images_storages' => (string)$uriBuilder->buildUriFromRoute('ig_ai_images_storages'),
+                'ig_ai_images_folders' => (string)$uriBuilder->buildUriFromRoute('ig_ai_images_folders')
+            ]);
+            
+            // Add configuration for enabled fields
+            $pageRenderer->addInlineSettingArray('igAiImages', [
+                'enabledFields' => $enabledFields
+            ]);
+        }
     }
     
     /**
